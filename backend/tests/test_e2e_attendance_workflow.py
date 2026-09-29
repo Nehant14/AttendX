@@ -16,6 +16,7 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.db.models import AttendanceRecord
 from app.ml.detector import Face
 from tests.conftest import create_synthetic_image_bytes, create_unit_embedding
@@ -27,7 +28,10 @@ async def test_complete_attendance_e2e_workflow(
     mock_detector,
     tmp_storage: str,
     db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
 ):
+    monkeypatch.setattr(settings, "USE_CELERY", False)
+
     # -------------------------------------------------------------
     # Step 1: Professor Signup & Login
     # -------------------------------------------------------------
@@ -56,7 +60,6 @@ async def test_complete_attendance_e2e_workflow(
     # -------------------------------------------------------------
     # Step 3: Register Students & Enroll Embeddings
     # -------------------------------------------------------------
-    # Create 3 students: Alice, Bob, Charlie
     s_alice_res = await client.post("/students", json={"roll_no": "ALICE001", "name": "Alice Smith"}, headers=headers)
     assert s_alice_res.status_code == 201
     alice_id = s_alice_res.json()["id"]
@@ -69,7 +72,6 @@ async def test_complete_attendance_e2e_workflow(
     assert s_charlie_res.status_code == 201
     charlie_id = s_charlie_res.json()["id"]
 
-    # Enroll face embeddings for Alice and Bob
     emb_alice = create_unit_embedding(111)
     emb_bob = create_unit_embedding(222)
 
@@ -110,11 +112,7 @@ async def test_complete_attendance_e2e_workflow(
     # -------------------------------------------------------------
     # Step 5: Upload Session Photo & Run Core Pipeline
     # -------------------------------------------------------------
-    # Session photo contains:
-    #   Face 1: High match with Alice (0.90) -> PRESENT
-    #   Face 2: Slightly blurry/flagged match (0.50) -> FLAGGED (originally candidate for Bob)
     face_1 = Face(bbox=(10, 10, 80, 80), det_score=0.95, embedding=np.array(emb_alice, dtype=np.float32))
-    # Slightly perturbed vector for face 2
     perturbed_bob = np.array(emb_bob, dtype=np.float32) * 0.5 + 0.1
     perturbed_bob = perturbed_bob / np.linalg.norm(perturbed_bob)
     face_2 = Face(bbox=(150, 150, 80, 80), det_score=0.92, embedding=perturbed_bob)
@@ -141,18 +139,15 @@ async def test_complete_attendance_e2e_workflow(
     assert review_data["session_id"] == session_id
     assert len(review_data["faces"]) == 2
 
-    # Check detected faces
     face_ids = {f["id"]: f for f in review_data["faces"]}
     assert len(face_ids) == 2
 
-    # Charlie was never detected in photo
     not_detected_ids = {nd["student_id"] for nd in review_data["not_detected"]}
     assert charlie_id in not_detected_ids
 
     # -------------------------------------------------------------
-    # Step 7: Resolve Faces (Human-in-the-loop review)
+    # Step 7: Resolve Faces
     # -------------------------------------------------------------
-    # Confirm face 1 (Alice)
     face_1_id = [f["id"] for f in review_data["faces"] if f["matched_student_id"] == alice_id][0]
     resolve_alice = await client.post(
         f"/sessions/{session_id}/resolve",
@@ -162,7 +157,6 @@ async def test_complete_attendance_e2e_workflow(
     assert resolve_alice.status_code == 200
     assert resolve_alice.json()["classification"] == "present"
 
-    # Reassign face 2 to Bob
     face_2_id = [f["id"] for f in review_data["faces"] if f["id"] != face_1_id][0]
     resolve_bob = await client.post(
         f"/sessions/{session_id}/resolve",
@@ -180,10 +174,9 @@ async def test_complete_attendance_e2e_workflow(
     assert finalize_res.status_code == 200
     fin_data = finalize_res.json()
     assert fin_data["status"] == "finalized"
-    assert fin_data["present_count"] == 2  # Alice & Bob
-    assert fin_data["absent_count"] == 1   # Charlie (auto-marked absent)
+    assert fin_data["present_count"] == 2
+    assert fin_data["absent_count"] == 1
 
-    # Verify Database Attendance Records
     records_res = await db_session.execute(
         select(AttendanceRecord).where(AttendanceRecord.session_id == session_id)
     )

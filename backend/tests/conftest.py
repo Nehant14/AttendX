@@ -41,29 +41,14 @@ def get_test_engine():
     )
 
 
-@pytest_asyncio.fixture(scope="session", autouse=True)
-async def prepare_database():
-    """Create pgvector extension and all tables once for the test session."""
+@pytest_asyncio.fixture
+async def db_session() -> AsyncGenerator[AsyncSession, None]:
+    """Yield an async database session for testing. Ensures tables exist and truncates them after test execution to guarantee clean isolation."""
     engine = get_test_engine()
     async with engine.begin() as conn:
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
-        await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
-    await engine.dispose()
-    yield
-    engine = get_test_engine()
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
-    await engine.dispose()
 
-
-@pytest_asyncio.fixture
-async def db_session() -> AsyncGenerator[AsyncSession, None]:
-    """Yield an async database session for testing. Truncates all tables after test execution
-
-    to guarantee clean test isolation.
-    """
-    engine = get_test_engine()
     session_factory = async_sessionmaker(
         bind=engine,
         class_=AsyncSession,
@@ -136,6 +121,11 @@ def auth_headers(test_professor: Professor) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
+@pytest.fixture
+def sample_jpeg_bytes() -> bytes:
+    return create_synthetic_image_bytes(300, 300)
+
+
 @pytest_asyncio.fixture
 async def test_class(db_session: AsyncSession, test_professor: Professor) -> ClassModel:
     """Create a default test class for the test professor."""
@@ -163,11 +153,6 @@ def create_synthetic_image_bytes(width: int = 200, height: int = 200, color: tup
     success, encoded = cv2.imencode(".jpg", img)
     assert success, "Failed to encode test image"
     return encoded.tobytes()
-
-
-@pytest.fixture
-def sample_jpeg_bytes() -> bytes:
-    return create_synthetic_image_bytes(300, 300)
 
 
 def create_unit_embedding(seed: int = 42) -> list[float]:

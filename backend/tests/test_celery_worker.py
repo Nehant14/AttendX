@@ -46,8 +46,9 @@ def test_process_session_task_retry_on_exception(monkeypatch: pytest.MonkeyPatch
 
     task_mock = MagicMock()
     task_mock.retry.side_effect = RuntimeError("RetryTriggered")
+    monkeypatch.setattr(process_session_task, "retry", task_mock.retry)
 
     with pytest.raises(RuntimeError, match="RetryTriggered"):
-        process_session_task.__wrapped__(task_mock, 456)
+        process_session_task(session_id=456)
 
     task_mock.retry.assert_called_once()
