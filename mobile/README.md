@@ -71,17 +71,24 @@ npm install
 ```
 
 ### 2. Configure Backend URL
-AttendX mobile connects to the FastAPI backend. You can configure the URL:
-- Inside the app: Tap the **Settings** icon on the top right or the server badge on the Login screen.
-- Default for Android Emulator: `http://10.0.2.2:8000`
-- Default for iOS Simulator / Web: `http://localhost:8000`
-- For physical devices on the same Wi-Fi: `http://<your-local-ip>:8000` (e.g. `http://192.168.1.15:8000`)
-- Use the built-in **"Test Health (/health)"** button in Settings to verify connectivity before signing in.
+Classes, students and sessions are stored on the server; the phone only caches them for offline display.
+- **Development (`npx expo start`):** the app auto-detects your PC's LAN IP and uses port 8000.
+- **Installed APK/IPA:** enter the PC's address once in **Settings** (e.g. `http://192.168.1.15:8000`). It is remembered.
+  Run `npm run lan-ip` on the PC to find it. Use **Test Health** before **Save URL**.
+- Android emulator: `http://10.0.2.2:8000`. iOS simulator: `http://localhost:8000`.
+- `EXPO_PUBLIC_API_URL` can pre-fill the address; `EXPO_PUBLIC_USE_MOCK=true` runs on built-in demo data (login `test@attendx.com` / `test1234`).
 
-### 3. Start the Development Server
+### 3. Run
 ```bash
-npx expo start
+npx expo start     # scan the QR with Expo Go (same Wi-Fi as the PC)
+npm run typecheck
 ```
-- Press `a` for Android Emulator
-- Press `i` for iOS Simulator
-- Press `w` for Web preview
+
+### 4. Build an installable app
+```bash
+npx eas-cli login
+npx eas-cli build -p android --profile preview   # produces an .apk
+```
+iOS device builds require a paid Apple Developer account (`--profile preview` with registered devices).
+The app allows plain HTTP (Android cleartext + iOS ATS exception) so it can reach a backend on your LAN.
+`.npmrc` sets `legacy-peer-deps=true`; keep it, EAS runs `npm ci`.
