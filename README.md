@@ -137,19 +137,36 @@ curl -X POST localhost:8000/sessions/1/finalize -H "Authorization: Bearer $TOKEN
 curl localhost:8000/sessions/1/audit -H "Authorization: Bearer $TOKEN"
 ```
 
-## 5. Running tests
+## 5. Running tests (Inside Docker)
 
+The project includes a professional, comprehensive `pytest` test suite (80+ tests) covering:
+- **Auth & Security**: Password hashing, JWT token validation, expiration, tampering, signup/login APIs, and dependency guards.
+- **Classes & Roster**: Class creation, student roster management, idempotency, non-existent student validation, and multi-tenant isolation.
+- **Students & Enrollment**: Student creation, duplicate roll_no prevention, upload size limits (>15MB), single/multi-photo quality gates, and 512-d vector embedding storage.
+- **Database & Models**: ORM schemas, unique constraints, foreign keys, and vector column properties.
+- **ML Pipeline & Quality**: Quality gate algorithms, classification thresholds (`PRESENT`, `FLAGGED`, `UNMATCHED`), cosine similarity, duplicate match guard, detector tiling, IoU/NMS merging, and anti-spoofing preprocessing.
+- **Business Logic**: Roster vector loading, crop saving, full `process_session` workflow, error paths, and transaction rollbacks.
+- **Sessions & End-to-End Workflow**: Photo upload, status polling, review JSON payload structure, face resolution (`confirm`, `reject` with reassign), session finalization, audit logs, and complete end-to-end lifecycle integration.
+- **Celery & Storage**: Celery task execution, retry handling, static media routes (`/media`, `/media/crops`), and health check.
+
+All tests run entirely inside Docker against a **dedicated PostgreSQL test database (`test_db`)** using `NullPool` engines and per-test table truncations for 100% test isolation.
+
+### Commands to Run Tests:
+
+#### Option A: Run inside active container (Fastest — <1 sec startup)
 ```bash
-cd backend
-pip install pytest
-PYTHONPATH=. pytest tests/ -v
+docker compose exec -e DATABASE_URL=postgresql+asyncpg://attendance:attendance@test_db:5432/attendance_test backend pytest -v
 ```
 
-`tests/test_matcher.py` and `tests/test_quality.py` cover the
-classification thresholds, duplicate-match guard, and quality-gate logic
-with plain numpy arrays — they run without the `insightface` models
-downloaded, so they're a fast way to sanity-check the matching logic in
-isolation.
+#### Option B: Run a specific test file
+```bash
+docker compose exec -e DATABASE_URL=postgresql+asyncpg://attendance:attendance@test_db:5432/attendance_test backend pytest tests/test_e2e_attendance_workflow.py -v
+```
+
+#### Option C: Run in a fresh, isolated container service
+```bash
+docker compose run --rm test
+```
 
 ## 6. Key config knobs (`backend/.env`)
 
