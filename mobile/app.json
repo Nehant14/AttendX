@@ -8,7 +8,14 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.attendx.app",
+      "infoPlist": {
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true
+        },
+        "NSLocalNetworkUsageDescription": "AttendX connects to the attendance server running on a computer on your local Wi-Fi network."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -18,14 +25,30 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.attendx"
+      "package": "com.attendx.app"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
       "expo-router",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "AttendX needs access to your photos to select classroom and student enrollment pictures.",
+          "cameraPermission": "AttendX needs the camera to capture classroom and student enrollment pictures.",
+          "microphonePermission": false
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ]
     ]
   }
 }
