@@ -97,7 +97,9 @@ export const FlaggedFaceCard: React.FC<FlaggedFaceCardProps> = ({
           title="Confirm"
           onPress={handleConfirm}
           size="sm"
-          disabled={isSubmitting}
+          // Nothing to confirm when the system matched this face to nobody;
+          // the professor must reassign it to a student instead.
+          disabled={isSubmitting || !face.matched_student_id}
           style={styles.actionBtn}
           icon={<Ionicons name="checkmark" size={16} color={Colors.textInverse} />}
         />

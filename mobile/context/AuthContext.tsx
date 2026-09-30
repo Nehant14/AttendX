@@ -1,8 +1,10 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { secureStorage } from '@/services/storage/secureStore';
 import { cacheStorage } from '@/services/storage/cache';
 import { authApi } from '@/services/api/auth';
+import { apiClient } from '@/services/api/client';
 import { Config } from '@/constants/config';
+import { normalizeBaseUrl } from '@/utils/url';
 import { LoginRequest, ProfessorCreate, TokenResponse } from '@/types/api';
 
 interface AuthState {
@@ -39,11 +41,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const loadStoredAuth = async () => {
     try {
-      const [token, profileJson, serverUrl] = await Promise.all([
+      const [token, profileJson, storedUrl] = await Promise.all([
         secureStorage.getItem(Config.STORAGE_KEYS.AUTH_TOKEN),
         secureStorage.getItem(Config.STORAGE_KEYS.USER_PROFILE),
         cacheStorage.getBaseUrl(),
       ]);
+      // First launch: nothing saved yet, fall back to the default so the
+      // Settings screen always has a real string to edit.
+      const serverUrl = normalizeBaseUrl(storedUrl) || Config.DEFAULT_API_BASE_URL;
 
       if (token && profileJson) {
         const profile = JSON.parse(profileJson);
@@ -73,7 +78,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const profile = { professorId: res.professor_id, name: res.name };
     await secureStorage.setItem(Config.STORAGE_KEYS.USER_PROFILE, JSON.stringify(profile));
 
-    const serverUrl = await cacheStorage.getBaseUrl();
+    const serverUrl = normalizeBaseUrl(await cacheStorage.getBaseUrl()) || Config.DEFAULT_API_BASE_URL;
     setState({
       isAuthenticated: true,
       isLoading: false,
@@ -94,12 +99,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await handleTokenResponse(res);
   };
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     await secureStorage.removeItem(Config.STORAGE_KEYS.AUTH_TOKEN);
     await secureStorage.removeItem(Config.STORAGE_KEYS.USER_PROFILE);
     await cacheStorage.clearAllUserData();
 
-    const serverUrl = await cacheStorage.getBaseUrl();
+    const serverUrl = normalizeBaseUrl(await cacheStorage.getBaseUrl()) || Config.DEFAULT_API_BASE_URL;
     setState({
       isAuthenticated: false,
       isLoading: false,
@@ -108,11 +113,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       professorName: null,
       serverUrl,
     });
-  };
+  }, []);
+
+  // Backend tokens expire (24h). When any authenticated call gets a 401,
+  // drop the stale session so the root layout sends the user to Login.
+  useEffect(() => {
+    apiClient.setUnauthorizedHandler(() => {
+      logout().catch(() => {});
+    });
+    return () => apiClient.setUnauthorizedHandler(null);
+  }, [logout]);
 
   const setServerUrl = async (url: string) => {
-    await cacheStorage.setBaseUrl(url);
-    setState((prev) => ({ ...prev, serverUrl: url }));
+    const clean = normalizeBaseUrl(url) || Config.DEFAULT_API_BASE_URL;
+    await cacheStorage.setBaseUrl(clean);
+    setState((prev) => ({ ...prev, serverUrl: clean }));
   };
 
   return (

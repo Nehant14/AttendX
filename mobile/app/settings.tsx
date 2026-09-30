@@ -12,6 +12,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/context/AuthContext';
 import { authApi } from '@/services/api/auth';
+import { Config } from '@/constants/config';
+import { normalizeBaseUrl, isValidBaseUrl } from '@/utils/url';
 import { Header } from '@/components/ui/Header';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -28,24 +30,36 @@ export default function SettingsScreen() {
   const [healthStatus, setHealthStatus] = useState<string | null>(null);
 
   const handleSaveUrl = async () => {
-    if (!inputUrl.trim()) {
-      Alert.alert('Invalid URL', 'Please enter a valid server URL');
+    if (!isValidBaseUrl(inputUrl)) {
+      Alert.alert(
+        'Invalid URL',
+        'Enter the computer\'s address including the port, e.g. http://192.168.1.23:8000'
+      );
       return;
     }
-    await setServerUrl(inputUrl.trim());
-    Alert.alert('Saved', `API Base URL updated to: ${inputUrl.trim()}`);
+    const clean = normalizeBaseUrl(inputUrl);
+    await setServerUrl(clean);
+    setInputUrl(clean);
+    Alert.alert('Saved', `API Base URL updated to: ${clean}`);
   };
 
   const handleTestConnection = async () => {
+    if (!isValidBaseUrl(inputUrl)) {
+      Alert.alert(
+        'Invalid URL',
+        'Enter the computer\'s address including the port, e.g. http://192.168.1.23:8000'
+      );
+      return;
+    }
+    const clean = normalizeBaseUrl(inputUrl);
     setTestingHealth(true);
     setHealthStatus(null);
     try {
-      // Temporarily update to test this input url
-      await setServerUrl(inputUrl.trim());
-      const res = await authApi.healthCheck();
-      if (res && res.status === 'ok') {
+      // Tests the typed address without saving it, so a typo can't lock you out.
+      const res = await authApi.healthCheck(clean);
+      if (res && typeof res.status === 'string' && res.status.startsWith('ok')) {
         setHealthStatus('connected');
-        Alert.alert('Connection Successful', `Backend responded with: ${JSON.stringify(res)}`);
+        Alert.alert('Connection Successful', `Backend at ${clean} is healthy.\nTap "Save URL" to use it.`);
       } else {
         setHealthStatus('error');
         Alert.alert('Unexpected Response', `Server returned: ${JSON.stringify(res)}`);
@@ -90,22 +104,35 @@ export default function SettingsScreen() {
           </Card>
         )}
 
+        {Config.USE_MOCK && (
+          <View style={styles.mockBanner}>
+            <Ionicons name="flask-outline" size={16} color={Colors.warningText} />
+            <Text style={styles.mockBannerText}>
+              Mock mode is ON (EXPO_PUBLIC_USE_MOCK=true): the app uses built-in demo data and never
+              contacts the server.
+            </Text>
+          </View>
+        )}
+
         {/* Server Configuration */}
         <Text style={styles.sectionTitle}>API Server Configuration</Text>
         <Card style={styles.card}>
           <Text style={styles.cardDesc}>
-            Specify the FastAPI backend endpoint. Use your local Wi-Fi IP address (e.g.{' '}
-            <Text style={{ fontWeight: '700' }}>http://192.168.1.X:8000</Text>) or emulator host (
-            <Text style={{ fontWeight: '700' }}>http://10.0.2.2:8000</Text>).
+            Address of the computer running the backend (Docker). On a real phone, connect to the
+            same Wi-Fi as that computer and use its LAN IP, e.g.{' '}
+            <Text style={{ fontWeight: '700' }}>http://192.168.1.23:8000</Text>. Emulators: Android{' '}
+            <Text style={{ fontWeight: '700' }}>http://10.0.2.2:8000</Text>, iOS simulator{' '}
+            <Text style={{ fontWeight: '700' }}>http://localhost:8000</Text>.
           </Text>
 
           <Input
             label="API Base URL"
             value={inputUrl}
             onChangeText={setInputUrl}
-            placeholder="http://10.0.2.2:8000"
+            placeholder="http://192.168.1.23:8000"
             autoCapitalize="none"
             autoCorrect={false}
+            keyboardType="url"
             leftIcon={<Ionicons name="link-outline" size={18} color={Colors.textMuted} />}
           />
 
@@ -277,5 +304,21 @@ const styles = StyleSheet.create({
   },
   logoutBtn: {
     marginTop: Spacing.xl,
+  },
+  mockBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    backgroundColor: Colors.warningSurface,
+    padding: Spacing.sm,
+    borderRadius: BorderRadius.sm,
+    marginBottom: Spacing.md,
+  },
+  mockBannerText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 17,
+    color: Colors.warningText,
+    fontWeight: '600',
   },
 });

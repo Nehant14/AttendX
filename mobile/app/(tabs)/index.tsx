@@ -13,8 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/context/AuthContext';
 import { useClasses } from '@/hooks/useClasses';
 import { useStudents } from '@/hooks/useStudents';
-import { cacheStorage } from '@/services/storage/cache';
-import { SessionSummaryOut } from '@/types/api';
+import { useSessions } from '@/hooks/useSessions';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -28,20 +27,16 @@ export default function DashboardScreen() {
   const { classes, refreshClasses } = useClasses();
   const { students, refreshStudents } = useStudents();
 
-  const [recentSessions, setRecentSessions] = useState<SessionSummaryOut[]>([]);
+  const { sessions: recentSessions, refreshSessions } = useSessions();
   const [refreshing, setRefreshing] = useState(false);
 
   const loadDashboardData = useCallback(async () => {
     try {
-      await Promise.all([
-        refreshClasses(),
-        refreshStudents(),
-        cacheStorage.getCachedSessions().then(setRecentSessions),
-      ]);
+      await Promise.all([refreshClasses(), refreshStudents(), refreshSessions()]);
     } finally {
       setRefreshing(false);
     }
-  }, [refreshClasses, refreshStudents]);
+  }, [refreshClasses, refreshStudents, refreshSessions]);
 
   useFocusEffect(
     useCallback(() => {
@@ -185,7 +180,9 @@ export default function DashboardScreen() {
                   <Ionicons name="calendar-outline" size={22} color={Colors.primary} />
                 </View>
                 <View style={styles.sessionInfoCol}>
-                  <Text style={styles.sessionTitle}>Session #{session.id}</Text>
+                  <Text style={styles.sessionTitle}>
+                    {session.class_name ? `${session.class_name} · #${session.id}` : `Session #${session.id}`}
+                  </Text>
                   <Text style={styles.sessionDate}>{formatDate(session.session_date)}</Text>
                 </View>
                 <View style={styles.sessionStatusCol}>
