@@ -42,6 +42,10 @@ class Settings(BaseSettings):
     MIN_FACE_SIZE_PX: int = 40
     MIN_BLUR_SCORE: float = 100.0
     DET_SIZE: int = 640
+    # Load the face model in the background when the API boots, so the
+    # (large, first-run) model download does not happen inside the first
+    # enrollment request from the phone and cause a client timeout.
+    PRELOAD_MODELS: bool = False
     MODEL_PACK: str = "buffalo_l"
     MODEL_VERSION: str = "buffalo_l-v1"
 
