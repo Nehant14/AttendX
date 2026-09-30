@@ -5,6 +5,7 @@
 import { secureStorage } from '@/services/storage/secureStore';
 import { cacheStorage } from '@/services/storage/cache';
 import { Config } from '@/constants/config';
+import { normalizeBaseUrl } from '@/utils/url';
 import { mockRequest } from './mock';
 
 export class ApiError extends Error {
@@ -22,21 +23,35 @@ export class ApiError extends Error {
 interface RequestOptions extends RequestInit {
   params?: Record<string, string | number | boolean | undefined>;
   skipAuth?: boolean;
+  /** Use this base URL for just this call (e.g. "Test connection" before saving). */
+  baseUrl?: string;
+  /** Override the default timeout for this call. */
+  timeoutMs?: number;
 }
 
 class ApiClient {
   private customBaseUrl: string | null = null;
+  private unauthorizedHandler: (() => void) | null = null;
 
   async getBaseUrl(): Promise<string> {
     if (this.customBaseUrl) {
       return this.customBaseUrl;
     }
-    const stored = await cacheStorage.getBaseUrl();
+    const stored = normalizeBaseUrl(await cacheStorage.getBaseUrl());
     return stored || Config.DEFAULT_API_BASE_URL;
   }
 
   setBaseUrlOverride(url: string | null): void {
-    this.customBaseUrl = url;
+    this.customBaseUrl = url ? normalizeBaseUrl(url) : null;
+  }
+
+  /**
+   * Called when an authenticated request comes back 401 (expired/invalid
+   * token; backend tokens last 24h) so the app can sign the user out instead
+   * of showing "Could not validate credentials" on every screen.
+   */
+  setUnauthorizedHandler(handler: (() => void) | null): void {
+    this.unauthorizedHandler = handler;
   }
 
   private formatError(status: number, data: any): ApiError {
@@ -63,7 +78,7 @@ class ApiClient {
       return (res.status === 204 ? null : res.data) as T;
     }
 
-    const baseUrl = await this.getBaseUrl();
+    const baseUrl = options.baseUrl ? normalizeBaseUrl(options.baseUrl) : await this.getBaseUrl();
     const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
 
     let urlString = `${baseUrl}${cleanEndpoint}`;
@@ -98,14 +113,33 @@ class ApiClient {
       headers['Content-Type'] = 'application/json';
     }
 
+    // `params`, `skipAuth`, `baseUrl`, `timeoutMs` are ours, not fetch's.
+    const { params: _params, skipAuth: _skipAuth, baseUrl: _baseUrl, timeoutMs, ...fetchOptions } = options;
+    const timeout = timeoutMs ?? (isFormData ? Config.UPLOAD_TIMEOUT_MS : Config.REQUEST_TIMEOUT_MS);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeout);
+
     let response: Response;
     try {
       response = await fetch(urlString, {
-        ...options,
+        ...fetchOptions,
         headers,
+        signal: controller.signal,
       });
     } catch (networkError: any) {
-      throw new ApiError(0, `Network request failed: ${networkError.message || 'Unable to connect to server'}`);
+      const timedOut = networkError?.name === 'AbortError';
+      throw new ApiError(
+        0,
+        timedOut
+          ? `The server at ${baseUrl} did not respond in time. Check that the backend is running and reachable.`
+          : `Cannot reach the server at ${baseUrl}. Make sure the backend is running, your phone is on the same Wi-Fi as the computer, and the computer's firewall allows port 8000.`
+      );
+    } finally {
+      clearTimeout(timer);
+    }
+
+    if (response.status === 401 && !options.skipAuth) {
+      this.unauthorizedHandler?.();
     }
 
     if (!response.ok) {

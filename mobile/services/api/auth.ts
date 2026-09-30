@@ -13,7 +13,8 @@ export const authApi = {
     return apiClient.post<TokenResponse>('/auth/login', data, { skipAuth: true });
   },
 
-  async healthCheck(): Promise<HealthResponse> {
-    return apiClient.get<HealthResponse>('/health', { skipAuth: true });
+  /** Pass `baseUrl` to test an address before it is saved. */
+  async healthCheck(baseUrl?: string): Promise<HealthResponse> {
+    return apiClient.get<HealthResponse>('/health', { skipAuth: true, baseUrl, timeoutMs: 8_000 });
   },
 };
