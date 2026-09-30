@@ -12,6 +12,10 @@ export interface LocalFile {
 }
 
 export const studentsApi = {
+  async listStudents(): Promise<StudentOut[]> {
+    return apiClient.get<StudentOut[]>('/students');
+  },
+
   async createStudent(data: StudentCreate): Promise<StudentOut> {
     return apiClient.post<StudentOut>('/students', data);
   },

@@ -11,10 +11,17 @@ import {
   ResolveResponse,
   FinalizeResponse,
   AuditLogOut,
+  SessionSummaryOut,
 } from '@/types/api';
 import { LocalFile } from './students';
 
 export const sessionsApi = {
+  async listSessions(classId?: number, limit = 50): Promise<SessionSummaryOut[]> {
+    return apiClient.get<SessionSummaryOut[]>('/sessions', {
+      params: { class_id: classId, limit },
+    });
+  },
+
   async createSession(
     classId: number,
     photo: LocalFile,

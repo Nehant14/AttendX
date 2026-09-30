@@ -105,6 +105,29 @@ export async function mockRequest(method: string, endpoint: string, body: any): 
     return ok({ access_token: 'mock-token', token_type: 'bearer', professor_id: 1, name: json.name || 'Test Professor' });
   }
 
+  // --- list endpoints (mirror GET /classes, /students, /sessions on the backend) ---
+  if (path === '/classes' && method === 'GET') return ok([...classes].reverse());
+  if (path === '/students' && method === 'GET') return ok([...students].reverse());
+  if (path === '/sessions' && method === 'GET') {
+    const wanted = new URLSearchParams(endpoint.split('?')[1] || '').get('class_id');
+    const list = Object.values(sessions)
+      .filter((s) => !wanted || s.class_id === Number(wanted))
+      .sort((a, b) => b.id - a.id)
+      .map((s) => {
+        const sm = summary(s);
+        return {
+          id: s.id,
+          class_id: s.class_id,
+          class_name: classes.find((c) => c.id === s.class_id)?.name ?? null,
+          session_date: s.date,
+          status: s.finalized ? 'finalized' : 'reviewed',
+          present_count: sm.present,
+          absent_count: s.finalized ? s.roster.length - sm.present : 0,
+        };
+      });
+    return ok(list);
+  }
+
   if (path === '/classes' && method === 'POST') {
     const c: ClassOut = { id: nextClass++, name: json.name, professor_id: 1, created_at: now() };
     classes.push(c); rosters[c.id] = [];

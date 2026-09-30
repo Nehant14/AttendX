@@ -1,19 +1,38 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { studentsApi, LocalFile } from '@/services/api/students';
 import { cacheStorage } from '@/services/storage/cache';
 import { StudentOut, EnrollmentResponse, EmbeddingOut } from '@/types/api';
 
+/**
+ * Students live on the server (GET /students). The local cache is only used to
+ * paint the screen instantly and as an offline fallback.
+ */
 export function useStudents() {
   const [students, setStudents] = useState<StudentOut[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const hasData = useRef(false);
 
   const loadStudents = useCallback(async () => {
-    setIsLoading(true);
+    if (!hasData.current) setIsLoading(true);
     setError(null);
+
     try {
       const cached = await cacheStorage.getCachedStudents();
-      setStudents(cached);
+      if (cached.length > 0) {
+        hasData.current = true;
+        setStudents(cached);
+        setIsLoading(false);
+      }
+    } catch {
+      // cache problems must never block a network refresh
+    }
+
+    try {
+      const fresh = await studentsApi.listStudents();
+      hasData.current = true;
+      setStudents(fresh);
+      await cacheStorage.setCachedStudents(fresh);
     } catch (err: any) {
       setError(err.message || 'Failed to load students');
     } finally {
@@ -36,9 +55,9 @@ export function useStudents() {
     return await studentsApi.enrollStudent(rollNo, photos);
   };
 
-  const getEmbeddings = async (rollNo: string): Promise<EmbeddingOut[]> => {
+  const getEmbeddings = useCallback(async (rollNo: string): Promise<EmbeddingOut[]> => {
     return await studentsApi.getEmbeddings(rollNo);
-  };
+  }, []);
 
   return {
     students,
