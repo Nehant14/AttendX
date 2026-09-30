@@ -12,6 +12,7 @@ const getDefaultHost = (): string => {
 };
 
 export const Config = {
+  USE_MOCK: process.env.EXPO_PUBLIC_USE_MOCK === 'true',
   DEFAULT_API_BASE_URL: getDefaultHost(),
   STORAGE_KEYS: {
     AUTH_TOKEN: 'attendx_auth_token',

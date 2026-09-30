@@ -5,6 +5,7 @@
 import { secureStorage } from '@/services/storage/secureStore';
 import { cacheStorage } from '@/services/storage/cache';
 import { Config } from '@/constants/config';
+import { mockRequest } from './mock';
 
 export class ApiError extends Error {
   status: number;
@@ -56,6 +57,12 @@ class ApiClient {
   }
 
   async request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
+    if (Config.USE_MOCK) {
+      const res = await mockRequest(options.method || 'GET', endpoint, options.body);
+      if (res.status >= 400) throw this.formatError(res.status, res.data);
+      return (res.status === 204 ? null : res.data) as T;
+    }
+
     const baseUrl = await this.getBaseUrl();
     const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
 
