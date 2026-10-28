@@ -1,11 +1,61 @@
-# Face Recognition Attendance System — Backend
+# AttendX — Face Recognition Attendance System
+
+`backend/` is a FastAPI + Postgres/pgvector service (runs in Docker) and `mobile/`
+is an Expo / React Native app for professors. This README covers running both
+together; `mobile/README.md` covers the app itself.
+
+## Quick start: backend in Docker, app on your phone
+
+1. **Start the backend** (PC, from the repo root):
+   ```bash
+   docker compose up --build -d
+   ```
+   Migrations run automatically. The first boot downloads the face model
+   (~300 MB) into a Docker volume; watch it with `docker compose logs -f backend`.
+   Check `http://localhost:8000/health` returns `{"status":"ok"}`.
+
+2. **Find your PC's LAN IP:** `node scripts/lan-ip.js` (prints e.g. `http://192.168.1.23:8000`).
+   Open that URL + `/health` in your *phone's browser*. If it doesn't load, the
+   app won't connect either. Fix this first (see Troubleshooting).
+
+3. **Run the app on the phone**
+   - *Android or iOS, development:* `cd mobile && npm install && npx expo start`, then scan the QR
+     code with Expo Go. The app auto-detects your PC's IP.
+   - *Android APK:* `cd mobile && npx eas-cli build -p android --profile preview`. Install the
+     downloaded `.apk`, open **Settings** (gear icon, also reachable from the login screen),
+     enter the URL from step 2, tap **Test Health**, then **Save URL**.
+   - *iOS installable build:* needs a paid Apple Developer account
+     (`eas build -p ios --profile preview` with registered devices) or sideloading via Xcode.
+     An APK cannot be installed on iOS.
+
+4. **Sign up** in the app, create a class and students, enroll 4-6 face photos per
+   student, add them to the class roster, then take attendance.
+
+### Troubleshooting connectivity
+- **Phone and PC must be on the same Wi-Fi.** Campus/guest networks often isolate clients.
+  Use a phone hotspot instead, or on Android: `adb reverse tcp:8000 tcp:8000` and use `http://localhost:8000`.
+- **Firewall:** allow inbound TCP 8000. Windows (admin PowerShell):
+  `netsh advfirewall firewall add rule name="AttendX API" dir=in action=allow protocol=TCP localport=8000`.
+  Linux: `sudo ufw allow 8000/tcp`. macOS: allow Docker when prompted.
+- **iOS:** if requests time out, enable *Settings > AttendX > Local Network*.
+- **Your IP changed** (DHCP)? Re-run `node scripts/lan-ip.js` and update it in Settings.
+- **First enrollment is slow:** the model is still loading; check the backend logs.
+- Plain HTTP is used for LAN development. Use HTTPS (reverse proxy) before exposing this beyond your network.
+
+### Checks
+- Backend tests: `docker compose run --rm test`
+- Mobile typecheck: `cd mobile && npm run typecheck`
+- App/backend route alignment: `cd backend && python ../scripts/check-api-contract.py`
+
+---
+
+# Backend details
 
 Full FastAPI backend implementing the plan: enrollment, session capture,
 detect → quality gate → embed → match → classify → duplicate guard →
 roster cross-check, review/resolve/finalize, and audit logging.
 
-This zip contains **only the backend** (mobile app scaffold is not
-included — see the original implementation plan for that). You said
+You said
 you'll pull the AI models yourself, so `insightface` and
 `Silent-Face-Anti-Spoofing` weights are **not bundled**; instructions to
 fetch them are below.
@@ -61,11 +111,7 @@ This starts:
 - `backend` — the FastAPI app on `http://localhost:8000`
 - `worker` — a Celery worker for background session processing
 
-Then run migrations once the DB is up:
-
-```bash
-docker compose exec backend alembic upgrade head
-```
+Migrations are applied automatically when the `backend` container starts.
 
 API docs (Swagger UI) will be live at `http://localhost:8000/docs`.
 
@@ -175,11 +221,11 @@ docker compose run --rm test
 | `HIGH_MATCH_THRESHOLD` / `LOW_MATCH_THRESHOLD` | Cosine-similarity cutoffs for present / flagged / unmatched |
 | `MIN_FACE_SIZE_PX` / `MIN_BLUR_SCORE` | Quality-gate cutoffs before a detected face is embedded |
 | `ENABLE_TILED_DETECTION` / `TILE_SIZE` / `TILE_OVERLAP` | Tiled detection for large group photos (catches small back-row faces) |
+| `PRELOAD_MODELS` | `true` = load the face model in the background at boot (set in docker-compose) |
 | `USE_CELERY` | `false` = process session photos synchronously inline; `true` = queue to Celery worker |
 
 ## What's NOT included (per the plan, out of scope for "backend only")
 
-- The Expo/React Native mobile app (Section 7 of the plan)
 - S3/MinIO wiring for production image storage (currently local disk)
 - Prometheus/Grafana monitoring
 - Liveness detection weights (you fetch these yourself — see Section 1 above)
@@ -190,14 +236,17 @@ docker compose run --rm test
 POST   /auth/signup
 POST   /auth/login
 
+GET    /classes
 POST   /classes
 POST   /classes/{id}/roster
 GET    /classes/{id}/roster
 
+GET    /students
 POST   /students
 POST   /students/{roll_no}/enroll        multipart, 4-6 photos
 GET    /students/{roll_no}/embeddings
 
+GET    /sessions?class_id=&limit=        history with present/absent counts
 POST   /sessions                         multipart class photo
 GET    /sessions/{id}/status
 GET    /sessions/{id}/review

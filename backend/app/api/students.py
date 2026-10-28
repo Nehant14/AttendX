@@ -15,6 +15,17 @@ from app.services.enrollment_service import EnrollmentError, enroll_student_phot
 router = APIRouter(prefix="/students", tags=["students"])
 
 
+@router.get("", response_model=list[StudentOut])
+async def list_students(
+    db: AsyncSession = Depends(get_db),
+    _professor: Professor = Depends(get_current_professor),
+):
+    """All registered students, newest first. Students are a shared pool
+    (they are not owned by a single professor), matching POST /students."""
+    result = await db.execute(select(Student).order_by(Student.created_at.desc(), Student.id.desc()))
+    return list(result.scalars().all())
+
+
 @router.post("", response_model=StudentOut, status_code=201)
 async def create_student(
     payload: StudentCreate,

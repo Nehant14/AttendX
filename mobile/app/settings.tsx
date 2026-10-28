@@ -12,11 +12,13 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/context/AuthContext';
+import { authApi } from '@/services/api/auth';
+import { Config, NETWORK_PRESETS } from '@/constants/config';
+import { normalizeBaseUrl, isValidBaseUrl } from '@/utils/url';
 import { Header } from '@/components/ui/Header';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
-import { NETWORK_PRESETS } from '@/constants/config';
 import { Colors, Spacing, BorderRadius, Shadows } from '@/constants/theme';
 
 export default function SettingsScreen() {
@@ -41,24 +43,51 @@ export default function SettingsScreen() {
   const [inputUrl, setInputUrl] = useState(serverUrl);
   const [testingHealth, setTestingHealth] = useState(false);
 
+  const handleSaveUrl = async () => {
+    if (!isValidBaseUrl(inputUrl)) {
+      Alert.alert(
+        'Invalid URL',
+        'Enter the computer\'s address including the port, e.g. http://192.168.1.23:8000'
+      );
+      return;
+    }
+    const clean = normalizeBaseUrl(inputUrl);
+    await setServerUrl(clean);
+    setInputUrl(clean);
+    Alert.alert('Saved', `API Base URL updated to: ${clean}`);
+  };
+
   const handleTestConnection = async () => {
+    if (!isValidBaseUrl(inputUrl)) {
+      Alert.alert(
+        'Invalid URL',
+        'Enter the computer\'s address including the port, e.g. http://192.168.1.23:8000'
+      );
+      return;
+    }
+    const clean = normalizeBaseUrl(inputUrl);
     setTestingHealth(true);
     try {
-      if (inputUrl.trim() !== serverUrl) {
-        await setServerUrl(inputUrl.trim());
-      }
-      const res = await testConnection();
-      if (res.ok) {
+      // Tests the typed address without saving it first, so a typo can't lock you out
+      const res = await authApi.healthCheck(clean);
+      if (res && typeof res.status === 'string' && res.status.startsWith('ok')) {
+        await setServerUrl(clean);
+        setInputUrl(clean);
         Alert.alert(
           'Backend Connected',
-          `Successfully connected to FastAPI backend!\nEndpoint: ${res.url}\nLatency: ${res.latencyMs}ms\nStatus: ${res.status}`
+          `Successfully connected to FastAPI backend!\nEndpoint: ${clean}\nStatus: ${res.status}`
         );
       } else {
         Alert.alert(
           'Connection Failed',
-          `${res.error || 'Backend unreachable.'}\n\nMake sure the Docker backend is running and your mobile device is on the same network.`
+          `Could not connect to ${clean}.\n\nMake sure the Docker backend is running and your mobile device is on the same network.`
         );
       }
+    } catch (err: any) {
+      Alert.alert(
+        'Connection Failed',
+        `${err?.message || 'Backend unreachable.'}\n\nMake sure the Docker backend is running and your mobile device is on the same network.`
+      );
     } finally {
       setTestingHealth(false);
     }
@@ -127,6 +156,17 @@ export default function SettingsScreen() {
               />
             </TouchableOpacity>
           </Card>
+        )}
+
+        {/* Mock Mode Banner if active */}
+        {Config.USE_MOCK && (
+          <View style={styles.mockBanner}>
+            <Ionicons name="flask-outline" size={16} color={Colors.warningText} />
+            <Text style={styles.mockBannerText}>
+              Mock mode is ON (EXPO_PUBLIC_USE_MOCK=true): the app uses built-in demo data and never
+              contacts the server.
+            </Text>
+          </View>
         )}
 
         {/* Backend & Device Connection Section */}
@@ -219,14 +259,12 @@ export default function SettingsScreen() {
               placeholder="http://192.168.1.X:8000"
               autoCapitalize="none"
               autoCorrect={false}
+              keyboardType="url"
             />
             <Button
               title="Apply"
               size="sm"
-              onPress={() => {
-                setServerUrl(inputUrl.trim());
-                handleTestConnection();
-              }}
+              onPress={handleSaveUrl}
             />
           </View>
         </Card>
@@ -444,5 +482,21 @@ const styles = StyleSheet.create({
   },
   logoutBtn: {
     marginTop: Spacing.sm,
+  },
+  mockBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    backgroundColor: Colors.warningSurface,
+    padding: Spacing.sm,
+    borderRadius: BorderRadius.sm,
+    marginBottom: Spacing.md,
+  },
+  mockBannerText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 17,
+    color: Colors.warningText,
+    fontWeight: '600',
   },
 });

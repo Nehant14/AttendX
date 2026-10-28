@@ -5,6 +5,10 @@ import { apiClient } from './client';
 import { ClassCreate, ClassOut, RosterAddRequest, RosterStudentOut } from '@/types/api';
 
 export const classesApi = {
+  async listClasses(): Promise<ClassOut[]> {
+    return apiClient.get<ClassOut[]>('/classes');
+  },
+
   async createClass(data: ClassCreate): Promise<ClassOut> {
     return apiClient.post<ClassOut>('/classes', data);
   },

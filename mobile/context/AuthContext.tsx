@@ -1,10 +1,12 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { secureStorage } from '@/services/storage/secureStore';
 import { cacheStorage } from '@/services/storage/cache';
 import { authApi, HealthCheckResult } from '@/services/api/auth';
+import { apiClient } from '@/services/api/client';
 import { Config } from '@/constants/config';
+import { normalizeBaseUrl } from '@/utils/url';
 import { LoginRequest, ProfessorCreate, TokenResponse } from '@/types/api';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export type UserRole = 'professor' | 'student';
 
@@ -66,13 +68,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const loadStoredAuth = useCallback(async () => {
     try {
-      const [token, profileJson, storedRole, studentJson, serverUrl] = await Promise.all([
+      const [token, profileJson, storedRole, studentJson, rawStoredUrl] = await Promise.all([
         secureStorage.getItem(Config.STORAGE_KEYS.AUTH_TOKEN),
         secureStorage.getItem(Config.STORAGE_KEYS.USER_PROFILE),
         AsyncStorage.getItem(Config.STORAGE_KEYS.USER_ROLE),
         AsyncStorage.getItem(Config.STORAGE_KEYS.STUDENT_SESSION),
         cacheStorage.getBaseUrl(),
       ]);
+
+      // First launch: nothing saved yet, fall back to the default so the
+      // Settings screen always has a real string to edit.
+      const serverUrl = normalizeBaseUrl(rawStoredUrl) || Config.DEFAULT_API_BASE_URL;
 
       const role: UserRole = storedRole === 'student' ? 'student' : 'professor';
       let studentRollNo: string | null = null;
@@ -133,7 +139,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await secureStorage.setItem(Config.STORAGE_KEYS.USER_PROFILE, JSON.stringify(profile));
     await AsyncStorage.setItem(Config.STORAGE_KEYS.USER_ROLE, 'professor');
 
-    const serverUrl = await cacheStorage.getBaseUrl();
+    const rawUrl = await cacheStorage.getBaseUrl();
+    const serverUrl = normalizeBaseUrl(rawUrl) || Config.DEFAULT_API_BASE_URL;
     setState((prev) => ({
       ...prev,
       userRole: 'professor',
@@ -180,13 +187,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }));
   };
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     await secureStorage.removeItem(Config.STORAGE_KEYS.AUTH_TOKEN);
     await secureStorage.removeItem(Config.STORAGE_KEYS.USER_PROFILE);
     await AsyncStorage.removeItem(Config.STORAGE_KEYS.USER_ROLE);
     await AsyncStorage.removeItem(Config.STORAGE_KEYS.STUDENT_SESSION);
 
-    const serverUrl = await cacheStorage.getBaseUrl();
+    const rawUrl = await cacheStorage.getBaseUrl();
+    const serverUrl = normalizeBaseUrl(rawUrl) || Config.DEFAULT_API_BASE_URL;
     setState((prev) => ({
       ...prev,
       userRole: 'professor',
@@ -199,11 +207,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       studentName: null,
       serverUrl,
     }));
-  };
+  }, []);
+
+  // Backend tokens expire (24h). When any authenticated call gets a 401,
+  // drop the stale session so the root layout sends the user to Login.
+  useEffect(() => {
+    apiClient.setUnauthorizedHandler(() => {
+      logout().catch(() => {});
+    });
+    return () => apiClient.setUnauthorizedHandler(null);
+  }, [logout]);
 
   const setServerUrl = async (url: string) => {
-    await cacheStorage.setBaseUrl(url);
-    setState((prev) => ({ ...prev, serverUrl: url }));
+    const clean = normalizeBaseUrl(url) || Config.DEFAULT_API_BASE_URL;
+    await cacheStorage.setBaseUrl(clean);
+    setState((prev) => ({ ...prev, serverUrl: clean }));
     await testConnection();
   };
 

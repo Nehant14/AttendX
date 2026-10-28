@@ -181,6 +181,8 @@ class AttendanceRecordOut(BaseModel):
 
 class SessionSummaryOut(BaseModel):
     id: int
+    class_id: int
+    class_name: str | None = None
     session_date: date
     status: str
     present_count: int

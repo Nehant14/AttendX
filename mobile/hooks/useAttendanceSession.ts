@@ -83,6 +83,8 @@ export function useAttendanceSession(sessionId?: number) {
             loadReview(sessionId);
           } else if (res.status === 'pending' || res.status === 'processing') {
             pollStatus(sessionId);
+          } else if (res.status === 'failed') {
+            setError(res.error_detail || 'Session processing failed');
           }
         })
         .catch((err) => {
@@ -114,6 +116,14 @@ export function useAttendanceSession(sessionId?: number) {
 
       if (res.status === 'reviewed' || res.status === 'finalized') {
         await loadReview(res.session_id);
+      } else if (res.status === 'failed') {
+        // Backend ran in synchronous mode and processing already failed.
+        try {
+          const st = await sessionsApi.getStatus(res.session_id);
+          setError(st.error_detail || 'Session processing failed');
+        } catch {
+          setError('Session processing failed');
+        }
       } else {
         pollStatus(res.session_id);
       }
@@ -170,6 +180,21 @@ export function useAttendanceSession(sessionId?: number) {
     }
   };
 
+  const refreshStatus = useCallback(async (): Promise<void> => {
+    if (!currentSessionId) return;
+    try {
+      const res = await sessionsApi.getStatus(currentSessionId);
+      setStatus(res.status);
+      if (res.status === 'reviewed' || res.status === 'finalized') {
+        await loadReview(currentSessionId);
+      } else if (res.status === 'failed') {
+        setError(res.error_detail || 'Session processing failed');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Error checking session status');
+    }
+  }, [currentSessionId, loadReview]);
+
   const loadAudit = async (): Promise<AuditLogOut[]> => {
     if (!currentSessionId) return [];
     try {
@@ -194,6 +219,7 @@ export function useAttendanceSession(sessionId?: number) {
     resolveFace,
     finalizeSession,
     loadAudit,
+    refreshStatus,
     reloadReview: () => (currentSessionId ? loadReview(currentSessionId) : Promise.resolve()),
   };
 }

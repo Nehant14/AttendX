@@ -40,7 +40,7 @@ export default function SessionReviewScreen() {
     resolveFace,
     finalizeSession,
     loadAudit,
-    reloadReview,
+    refreshStatus,
   } = useAttendanceSession(sessionId);
 
   const { getRoster } = useClasses();
@@ -162,7 +162,7 @@ export default function SessionReviewScreen() {
           <Button
             title="Refresh Status"
             variant="outline"
-            onPress={() => reloadReview()}
+            onPress={() => refreshStatus()}
             style={{ marginTop: Spacing.xl }}
           />
         </View>

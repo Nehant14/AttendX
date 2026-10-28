@@ -159,6 +159,8 @@ export interface AttendanceRecordOut {
 
 export interface SessionSummaryOut {
   id: number;
+  class_id?: number;
+  class_name?: string | null;
   session_date: string;
   status: string;
   present_count: number;

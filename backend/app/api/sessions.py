@@ -6,8 +6,8 @@ import os
 import uuid
 from datetime import date
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_professor
@@ -34,6 +34,7 @@ from app.schemas.schemas import (
     SessionCreateResponse,
     SessionReviewResponse,
     SessionStatusResponse,
+    SessionSummaryOut,
 )
 from app.services.attendance_service import process_session
 from app.services.audit_service import get_session_audit_log, log_action
@@ -49,6 +50,50 @@ async def _get_owned_session(db: AsyncSession, session_id: int, professor: Profe
     if class_ is None or class_.professor_id != professor.id:
         raise HTTPException(status_code=404, detail="Session not found")
     return session
+
+
+@router.get("", response_model=list[SessionSummaryOut])
+async def list_sessions(
+    class_id: int | None = Query(None, description="Only sessions for this class"),
+    limit: int = Query(50, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+    professor: Professor = Depends(get_current_professor),
+):
+    """Recent sessions for the current professor (newest first), with
+    present/absent counts so the mobile dashboard can render history."""
+    stmt = (
+        select(ClassSession, ClassModel.name)
+        .join(ClassModel, ClassModel.id == ClassSession.class_id)
+        .where(ClassModel.professor_id == professor.id)
+    )
+    if class_id is not None:
+        stmt = stmt.where(ClassSession.class_id == class_id)
+    stmt = stmt.order_by(ClassSession.created_at.desc(), ClassSession.id.desc()).limit(limit)
+    rows = (await db.execute(stmt)).all()
+
+    counts: dict[int, dict[str, int]] = {}
+    session_ids = [sess.id for sess, _name in rows]
+    if session_ids:
+        agg = await db.execute(
+            select(AttendanceRecord.session_id, AttendanceRecord.status, func.count())
+            .where(AttendanceRecord.session_id.in_(session_ids))
+            .group_by(AttendanceRecord.session_id, AttendanceRecord.status)
+        )
+        for sid, status_, n in agg.all():
+            counts.setdefault(sid, {})[status_] = n
+
+    return [
+        SessionSummaryOut(
+            id=sess.id,
+            class_id=sess.class_id,
+            class_name=class_name,
+            session_date=sess.session_date,
+            status=sess.status,
+            present_count=counts.get(sess.id, {}).get("present", 0),
+            absent_count=counts.get(sess.id, {}).get("absent", 0),
+        )
+        for sess, class_name in rows
+    ]
 
 
 @router.post("", response_model=SessionCreateResponse, status_code=201)
@@ -92,7 +137,15 @@ async def create_session(
         process_session_task.delay(session.id)
     else:
         # Synchronous processing for local dev without Celery/Redis running.
-        await process_session(db, session.id)
+        # process_session() records the failure on the session row (status
+        # "failed" + error_detail) before re-raising. Swallow it here so the
+        # mobile app gets a normal 201 and shows the failure reason on the
+        # session screen instead of an opaque HTTP 500.
+        try:
+            await process_session(db, session.id)
+        except Exception:  # noqa: BLE001
+            pass
+        await db.refresh(session)
 
     return SessionCreateResponse(session_id=session.id, status=session.status)
 
@@ -188,6 +241,29 @@ async def resolve_face(
 
     old_student_id = face.matched_student_id
 
+    if payload.action not in ("confirm", "reject"):
+        raise HTTPException(status_code=400, detail="action must be 'confirm' or 'reject'")
+
+    if payload.action == "confirm" and face.matched_student_id is None:
+        # Nothing to confirm: there is no student attached to this face, and
+        # marking it "present" would record attendance for nobody.
+        raise HTTPException(
+            status_code=400,
+            detail="This face has no matched student. Reject it and pick a student to reassign it to.",
+        )
+
+    if payload.action == "reject" and payload.reassign_student_id is not None:
+        # AttendanceRecord rows only exist for students on the class roster, so
+        # reassigning to anyone else would silently record nothing.
+        on_roster = await db.execute(
+            select(ClassRoster.student_id).where(
+                ClassRoster.class_id == session.class_id,
+                ClassRoster.student_id == payload.reassign_student_id,
+            )
+        )
+        if on_roster.first() is None:
+            raise HTTPException(status_code=400, detail="Student is not on this class roster")
+
     if payload.action == "confirm":
         face.classification = PRESENT
     elif payload.action == "reject":
@@ -197,8 +273,6 @@ async def resolve_face(
         else:
             face.matched_student_id = None
             face.classification = "unmatched"
-    else:
-        raise HTTPException(status_code=400, detail="action must be 'confirm' or 'reject'")
 
     # Sync the corresponding attendance_records rows.
     if old_student_id is not None and old_student_id != face.matched_student_id:

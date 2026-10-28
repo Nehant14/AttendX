@@ -190,6 +190,11 @@ async def test_resolve_face_reject_and_reassign(
     student2 = Student(roll_no="STU002", name="Actual Student")
     db_session.add(student2)
     await db_session.flush()
+    # Reassignment targets must be on the class roster (see resolve_face).
+    db_session.add_all([
+        ClassRoster(class_id=test_class.id, student_id=test_student.id),
+        ClassRoster(class_id=test_class.id, student_id=student2.id),
+    ])
 
     session = ClassSession(class_id=test_class.id, session_date=date.today(), photo_path="/tmp/p.jpg", status="reviewed")
     db_session.add(session)

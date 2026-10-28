@@ -13,6 +13,20 @@ from app.schemas.schemas import ClassCreate, ClassOut, RosterAddRequest, RosterS
 router = APIRouter(prefix="/classes", tags=["classes"])
 
 
+@router.get("", response_model=list[ClassOut])
+async def list_classes(
+    db: AsyncSession = Depends(get_db),
+    professor: Professor = Depends(get_current_professor),
+):
+    """All classes owned by the current professor, newest first."""
+    result = await db.execute(
+        select(ClassModel)
+        .where(ClassModel.professor_id == professor.id)
+        .order_by(ClassModel.created_at.desc(), ClassModel.id.desc())
+    )
+    return list(result.scalars().all())
+
+
 @router.post("", response_model=ClassOut, status_code=201)
 async def create_class(
     payload: ClassCreate,
