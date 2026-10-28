@@ -7,7 +7,7 @@ import { LoadingView } from '@/components/ui/LoadingView';
 import { Colors } from '@/constants/theme';
 
 function RootLayoutNav() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, userRole } = useAuth();
   const segments = useSegments();
   const router = useRouter();
 
@@ -20,10 +20,13 @@ function RootLayoutNav() {
       // Redirect to login if unauthenticated
       router.replace('/(auth)/login');
     } else if (isAuthenticated && inAuthGroup) {
-      // Redirect to dashboard if logged in
-      router.replace('/(tabs)');
+      if (userRole === 'student') {
+        router.replace('/(tabs)/student-portal');
+      } else {
+        router.replace('/(tabs)');
+      }
     }
-  }, [isAuthenticated, isLoading, segments, router]);
+  }, [isAuthenticated, isLoading, userRole, segments, router]);
 
   if (isLoading) {
     return <LoadingView message="Initializing AttendX..." />;

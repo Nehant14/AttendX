@@ -17,6 +17,7 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { ConnectionStatusBanner } from '@/components/ui/ConnectionStatusBanner';
 import { Colors, Spacing, BorderRadius, Shadows } from '@/constants/theme';
 import { formatDate } from '@/utils/formatters';
 
@@ -68,6 +69,11 @@ export default function ClassesListScreen() {
         data={classes}
         keyExtractor={(item) => String(item.id)}
         contentContainerStyle={styles.listContent}
+        ListHeaderComponent={
+          <View style={{ alignItems: 'center', marginBottom: Spacing.sm }}>
+            <ConnectionStatusBanner />
+          </View>
+        }
         renderItem={({ item }) => (
           <Card
             style={styles.classCard}

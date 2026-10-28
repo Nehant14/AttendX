@@ -19,12 +19,13 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { ConnectionStatusBanner } from '@/components/ui/ConnectionStatusBanner';
 import { Colors, Spacing, BorderRadius, Shadows } from '@/constants/theme';
 import { formatDate } from '@/utils/formatters';
 
 export default function DashboardScreen() {
   const router = useRouter();
-  const { professorName } = useAuth();
+  const { professorName, switchRole } = useAuth();
   const { classes, refreshClasses } = useClasses();
   const { students, refreshStudents } = useStudents();
 
@@ -54,85 +55,111 @@ export default function DashboardScreen() {
     loadDashboardData();
   };
 
+  const handleOpenStudentPortal = async () => {
+    if (students.length > 0) {
+      await switchRole('student');
+      router.push('/(tabs)/student-portal');
+    } else {
+      router.push('/(tabs)/students');
+    }
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        showsVerticalScrollIndicator={false}
       >
         {/* Top Header */}
         <View style={styles.headerRow}>
-          <View>
-            <Text style={styles.greetingText}>Welcome back,</Text>
-            <Text style={styles.nameText}>{professorName || 'Professor'}</Text>
+          <View style={styles.titleCol}>
+            <Text style={styles.greetingText}>Faculty Dashboard</Text>
+            <Text style={styles.nameText} numberOfLines={1}>
+              {professorName || 'Professor'}
+            </Text>
           </View>
-          <TouchableOpacity
-            style={styles.settingsBtn}
-            onPress={() => router.push('/settings')}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="settings-outline" size={22} color={Colors.textPrimary} />
-          </TouchableOpacity>
+          <View style={styles.headerActions}>
+            <TouchableOpacity
+              style={styles.actionIconBtn}
+              onPress={handleOpenStudentPortal}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="school-outline" size={20} color={Colors.primary} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.actionIconBtn}
+              onPress={() => router.push('/settings')}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="settings-outline" size={20} color={Colors.textPrimary} />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Live Backend Connection Status Pill */}
+        <View style={styles.connectionWrapper}>
+          <ConnectionStatusBanner />
         </View>
 
         {/* Quick Launch Hero */}
         <View style={styles.heroCard}>
-          <View style={styles.heroLeft}>
+          <View style={styles.heroContent}>
             <Text style={styles.heroTitle}>Automate Attendance</Text>
             <Text style={styles.heroSubtitle}>
-              Take a high-res classroom photo and let AttendX identify enrolled faces.
+              Take a classroom photo to detect, match, and log student attendance.
             </Text>
             <Button
-              title="Start Attendance Session"
+              title="Start New Attendance Session"
               onPress={() => router.push('/(tabs)/attendance')}
               size="md"
               style={styles.heroBtn}
-              icon={<Ionicons name="camera-outline" size={18} color={Colors.textInverse} />}
+              icon={<Ionicons name="camera" size={17} color={Colors.textInverse} />}
             />
           </View>
         </View>
 
         {/* Overview Stats */}
         <View style={styles.statsGrid}>
-          <View style={styles.statCard}>
+          <Card style={styles.statCard} onPress={() => router.push('/(tabs)/classes')}>
             <View style={[styles.statIconBadge, { backgroundColor: Colors.primarySurface }]}>
-              <Ionicons name="book-outline" size={20} color={Colors.primary} />
+              <Ionicons name="book-outline" size={18} color={Colors.primary} />
             </View>
             <Text style={styles.statCount}>{classes.length}</Text>
             <Text style={styles.statLabel}>Classes</Text>
-          </View>
+          </Card>
 
-          <View style={styles.statCard}>
+          <Card style={styles.statCard} onPress={() => router.push('/(tabs)/students')}>
             <View style={[styles.statIconBadge, { backgroundColor: Colors.accentSurface }]}>
-              <Ionicons name="people-outline" size={20} color={Colors.accent} />
+              <Ionicons name="people-outline" size={18} color={Colors.accent} />
             </View>
             <Text style={styles.statCount}>{students.length}</Text>
             <Text style={styles.statLabel}>Students</Text>
-          </View>
+          </Card>
 
-          <View style={styles.statCard}>
+          <Card style={styles.statCard}>
             <View style={[styles.statIconBadge, { backgroundColor: Colors.successSurface }]}>
-              <Ionicons name="checkmark-done-circle-outline" size={20} color={Colors.success} />
+              <Ionicons name="checkmark-done" size={18} color={Colors.success} />
             </View>
             <Text style={styles.statCount}>{recentSessions.length}</Text>
             <Text style={styles.statLabel}>Sessions</Text>
-          </View>
+          </Card>
         </View>
 
         {/* Classes Section */}
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Your Classes</Text>
+          <Text style={styles.sectionTitle}>Courses</Text>
           <TouchableOpacity onPress={() => router.push('/(tabs)/classes')}>
-            <Text style={styles.sectionLink}>View All</Text>
+            <Text style={styles.sectionLink}>View All ({classes.length})</Text>
           </TouchableOpacity>
         </View>
 
         {classes.length === 0 ? (
           <EmptyState
             icon="school-outline"
-            title="No Classes Yet"
-            description="Create your first class to configure student rosters."
-            actionTitle="Create Class"
+            title="No Classes Configured"
+            description="Create your course to register student rosters and run face matching."
+            actionTitle="Create First Class"
             onAction={() => router.push('/(tabs)/classes')}
           />
         ) : (
@@ -148,12 +175,12 @@ export default function DashboardScreen() {
                 onPress={() => router.push(`/(tabs)/classes/${c.id}`)}
               >
                 <View style={styles.classIconBadge}>
-                  <Ionicons name="school" size={20} color={Colors.primary} />
+                  <Ionicons name="school" size={18} color={Colors.primary} />
                 </View>
                 <Text style={styles.className} numberOfLines={1}>
                   {c.name}
                 </Text>
-                <Text style={styles.classMeta}>Class ID: {c.id}</Text>
+                <Text style={styles.classMeta}>Class ID: #{c.id}</Text>
                 <View style={styles.classFooter}>
                   <Text style={styles.classAction}>Manage Roster →</Text>
                 </View>
@@ -164,14 +191,14 @@ export default function DashboardScreen() {
 
         {/* Recent Activity / Sessions */}
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Recent Attendance Activity</Text>
+          <Text style={styles.sectionTitle}>Recent Attendance Sessions</Text>
         </View>
 
         {recentSessions.length === 0 ? (
           <EmptyState
             icon="time-outline"
-            title="No Attendance Sessions Yet"
-            description="Your recent classroom attendance captures and finalized reviews will appear here."
+            title="No Past Sessions"
+            description="Completed classroom sessions will appear here with review breakdowns."
           />
         ) : (
           recentSessions.slice(0, 5).map((session) => (
@@ -182,7 +209,7 @@ export default function DashboardScreen() {
             >
               <View style={styles.sessionRow}>
                 <View style={styles.sessionIconCol}>
-                  <Ionicons name="calendar-outline" size={22} color={Colors.primary} />
+                  <Ionicons name="calendar-outline" size={20} color={Colors.primary} />
                 </View>
                 <View style={styles.sessionInfoCol}>
                   <Text style={styles.sessionTitle}>Session #{session.id}</Text>
@@ -218,22 +245,31 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: Spacing.lg,
+    marginBottom: Spacing.xs,
+  },
+  titleCol: {
+    flex: 1,
   },
   greetingText: {
-    fontSize: 14,
-    color: Colors.textSecondary,
-    fontWeight: '500',
+    fontSize: 12,
+    color: Colors.textMuted,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   nameText: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '800',
     color: Colors.textPrimary,
   },
-  settingsBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+  headerActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  actionIconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: Colors.card,
     borderWidth: 1,
     borderColor: Colors.border,
@@ -241,21 +277,25 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     ...Shadows.sm,
   },
+  connectionWrapper: {
+    alignItems: 'center',
+    marginVertical: Spacing.sm,
+  },
   heroCard: {
     backgroundColor: Colors.primaryDark,
     borderRadius: BorderRadius.lg,
     padding: Spacing.lg,
-    marginBottom: Spacing.lg,
+    marginBottom: Spacing.md,
     ...Shadows.md,
   },
-  heroLeft: {
+  heroContent: {
     width: '100%',
   },
   heroTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '800',
     color: Colors.textInverse,
-    marginBottom: 6,
+    marginBottom: 4,
   },
   heroSubtitle: {
     fontSize: 13,
@@ -269,33 +309,29 @@ const styles = StyleSheet.create({
   statsGrid: {
     flexDirection: 'row',
     gap: Spacing.sm,
-    marginBottom: Spacing.xl,
+    marginBottom: Spacing.lg,
   },
   statCard: {
     flex: 1,
-    backgroundColor: Colors.card,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.md,
-    borderWidth: 1,
-    borderColor: Colors.border,
     alignItems: 'center',
-    ...Shadows.sm,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.xs,
   },
   statIconBadge: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 6,
   },
   statCount: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '800',
     color: Colors.textPrimary,
   },
   statLabel: {
-    fontSize: 12,
+    fontSize: 11,
     color: Colors.textSecondary,
     marginTop: 2,
   },
@@ -303,43 +339,43 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: Spacing.md,
+    marginBottom: Spacing.sm,
     marginTop: Spacing.xs,
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '700',
     color: Colors.textPrimary,
   },
   sectionLink: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
     color: Colors.primary,
   },
   horizontalClassList: {
-    gap: Spacing.md,
-    paddingBottom: Spacing.md,
+    gap: Spacing.sm,
+    paddingBottom: Spacing.sm,
   },
   classCard: {
-    width: 170,
+    width: 160,
     padding: Spacing.md,
   },
   classIconBadge: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: Colors.primarySurface,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: Spacing.sm,
   },
   className: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '700',
     color: Colors.textPrimary,
   },
   classMeta: {
-    fontSize: 12,
+    fontSize: 11,
     color: Colors.textMuted,
     marginTop: 2,
   },
@@ -347,11 +383,11 @@ const styles = StyleSheet.create({
     marginTop: Spacing.md,
     borderTopWidth: 1,
     borderTopColor: Colors.borderLight,
-    paddingTop: 8,
+    paddingTop: 6,
   },
   classAction: {
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 11,
+    fontWeight: '700',
     color: Colors.primary,
   },
   sessionCard: {
@@ -362,9 +398,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   sessionIconCol: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: Colors.primarySurface,
     alignItems: 'center',
     justifyContent: 'center',
@@ -374,14 +410,14 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   sessionTitle: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '700',
     color: Colors.textPrimary,
   },
   sessionDate: {
-    fontSize: 13,
+    fontSize: 12,
     color: Colors.textSecondary,
-    marginTop: 2,
+    marginTop: 1,
   },
   sessionStatusCol: {
     alignItems: 'flex-end',
@@ -389,6 +425,6 @@ const styles = StyleSheet.create({
   sessionCounts: {
     fontSize: 11,
     color: Colors.textMuted,
-    marginTop: 4,
+    marginTop: 3,
   },
 });

@@ -18,6 +18,7 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { ConnectionStatusBanner } from '@/components/ui/ConnectionStatusBanner';
 import { pickImageFromGallery, takePhotoWithCamera, PickedImage } from '@/utils/image';
 import { Colors, Spacing, BorderRadius, Shadows } from '@/constants/theme';
 
@@ -90,6 +91,10 @@ export default function AttendanceStartScreen() {
       />
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
+        <View style={{ alignItems: 'center', marginBottom: Spacing.sm }}>
+          <ConnectionStatusBanner />
+        </View>
+
         {/* Class Selection */}
         <Text style={styles.sectionTitle}>1. Select Course</Text>
 
